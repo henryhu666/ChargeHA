@@ -1210,7 +1210,10 @@ git commit -m "registers sungrow isolarcloud energy plugin"
 
 ### Task 5: Setup UI (form, plant picker, config panel)
 
-Mirrors the GoodWe client, which already solves the same problem: credentials, then a station list fetched with them, then a selection.
+Copies the GoodWe client, which already solves this exact problem: credentials,
+then a list fetched with them, then a selection. The repo keeps each plugin's UI
+self-contained (`InverterSetupShared.tsx` shares types only, no components), so
+copying is the established pattern here, not an oversight.
 
 **Files:**
 - Create: `packages/plugins/energy/sungrow-isolarcloud/client/fields.ts`
@@ -1221,76 +1224,218 @@ Mirrors the GoodWe client, which already solves the same problem: credentials, t
 - Create: `packages/plugins/energy/sungrow-isolarcloud/client/SungrowSetupStep.tsx`
 - Create: `packages/plugins/energy/sungrow-isolarcloud/client/wizardSteps.ts`
 - Test: `packages/plugins/energy/sungrow-isolarcloud/client/SungrowForm.test.tsx`
-- Modify: `packages/plugins/componentRegistry.ts`
+- Modify: `packages/plugins/componentRegistry.ts` (three separate edits — see Step 5)
 
 **Interfaces:**
-- Consumes (Task 4): the `listPlants` / `testConnection` / config procedures on the plugin router; `sungrowConfigDef` keys `email`, `password`, `region`, `ps_id`.
-- Produces: `sungrowWizardSteps` (a `PluginStepDef[]`), and a settings component registered under `sungrow-isolarcloud-config`.
+- Consumes (Task 4): router procedures `listPlants({ email, password, region })`
+  and `testConnection({ email, password, region, psId })`, each resolving to
+  `{ success: true, plants } | { success: true, systemName } | { success: false, error }`.
+  Config keys: `email`, `password`, `region`, `ps_id`.
+- Produces:
+  - `sungrowWizardSteps: PluginStepDef[]`
+  - `sungrowOption: EnergyPluginOption`
+  - `SungrowConfig` (React component, registered as `sungrow-isolarcloud-config`)
+  - `PlantOption = { id: string; name: string }`
+  - `SUNGROW_REGIONS`, `REGION_LABEL`, `REGION_HELP` from `fields.ts`
 
-- [ ] **Step 1: Read the GoodWe client files to copy their structure**
+**Host UI primitives** (all imported from `../../../hostUi.ts`, as GoodWe does):
+`widenTrpc`, `PluginStepDef`, `stepStyles`, `TestResultBadge`, `TestStatus`,
+`FormError`, `DiscoveryResultList`. Components use `@radix-ui/themes`
+(`Button`, `Select`, `Text`, `TextField`) and `lucide-react` for the spinner.
 
-Run:
+**The only substantive difference from GoodWe:** a required **region** select.
+GoodWe's SEMS+ `Switch` is dropped; the region `Select` takes its place. The
+region must be chosen before plants can be listed, because the gateway host is
+per-region and a wrong region reads as a login failure.
 
-```bash
-cat packages/plugins/energy/goodwe-sems/client/fields.ts \
-    packages/plugins/energy/goodwe-sems/client/trpc.ts \
-    packages/plugins/energy/goodwe-sems/client/StationPicker.tsx \
-    packages/plugins/energy/goodwe-sems/client/GoodweSemsForm.tsx \
-    packages/plugins/energy/goodwe-sems/client/GoodweSemsConfig.tsx \
-    packages/plugins/energy/goodwe-sems/client/GoodweSemsSetupStep.tsx \
-    packages/plugins/energy/goodwe-sems/client/wizardSteps.ts
-```
+- [ ] **Step 1: Write `fields.ts` and `trpc.ts`**
 
-These are the templates. The Sungrow versions differ in exactly three ways:
-1. `account` → `email`, `station_id` → `ps_id`, station → plant in labels.
-2. An extra **region** field: a select over `europe | international | australia | china | india`, defaulting to `europe`, labelled "Server region". It must be set before the plant list can load, and the help text should say that picking the wrong region makes login fail.
-3. No "SEMS+" toggle — Sungrow has no equivalent.
-
-- [ ] **Step 2: Write the failing form test**
-
-Create `packages/plugins/energy/sungrow-isolarcloud/client/SungrowForm.test.tsx`, modelled on `GoodweSemsForm.test.tsx` (read it first). It must cover:
-
-```
-- renders email, password and region fields
-- defaults the region select to europe
-- disables the "Load plants" action until email and password are non-empty
-- renders the returned plants as selectable options after a successful listPlants
-- shows the error string when listPlants returns { success: false }
-```
-
-Copy the harness/mocking approach from `GoodweSemsForm.test.tsx` verbatim —
-it already mocks the plugin tRPC client.
-
-- [ ] **Step 3: Run test to verify it fails**
-
-Run: `deno task --filter client test`
-Expected: FAIL — components not found.
-
-- [ ] **Step 4: Implement the client components**
-
-Write the seven client files by adapting the GoodWe equivalents per the three
-differences in Step 1. Then modify `packages/plugins/componentRegistry.ts`:
-
-add the import beside the other energy wizard steps:
+Create `packages/plugins/energy/sungrow-isolarcloud/client/fields.ts`:
 
 ```ts
-import { sungrowWizardSteps } from "./energy/sungrow-isolarcloud/client/wizardSteps.ts";
+// One source for text the wizard and the settings page both render, so the
+// two views of a control can't drift apart.
+
+export const SUNGROW_REGIONS = [
+  { value: "europe", label: "Europe" },
+  { value: "international", label: "International" },
+  { value: "australia", label: "Australia" },
+  { value: "china", label: "China" },
+  { value: "india", label: "India" },
+] as const;
+
+export const REGION_LABEL = "Server region";
+
+export const REGION_HELP =
+  "The iSolarCloud region your account belongs to. Picking the wrong one " +
+  "looks exactly like a wrong password, so check this first if login fails.";
 ```
 
-and the entry in `energyPluginSteps`:
+Create `packages/plugins/energy/sungrow-isolarcloud/client/trpc.ts`:
+
+```ts
+import { widenTrpc } from "../../../hostUi.ts";
+import type { SungrowAppRouter } from "../routerType.ts";
+
+export const trpc = widenTrpc<SungrowAppRouter>();
+```
+
+- [ ] **Step 2: Write `PlantPicker.tsx`**
+
+Create `packages/plugins/energy/sungrow-isolarcloud/client/PlantPicker.tsx`:
+
+```tsx
+import { Text } from "@radix-ui/themes";
+import { DiscoveryResultList } from "../../../hostUi.ts";
+
+export interface PlantOption {
+  id: string;
+  name: string;
+}
+
+const pickerStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+} as const;
+
+export function PlantPicker(
+  { plants, selectedPsId, onSelect, searched }: {
+    plants: PlantOption[];
+    selectedPsId: string;
+    onSelect: (psId: string) => void;
+    searched: boolean;
+  },
+) {
+  if (plants.length === 0 && !searched && !selectedPsId) return null;
+
+  return (
+    <div style={pickerStyle}>
+      <Text as="label" size="2" weight="medium">Plant</Text>
+
+      {plants.length === 0 && selectedPsId && (
+        <Text size="1" color="gray">Current plant: {selectedPsId}</Text>
+      )}
+
+      <DiscoveryResultList
+        results={plants}
+        onUse={(plant: PlantOption) => onSelect(plant.id)}
+        searched={searched}
+        selectedId={selectedPsId}
+        emptyMessage="No plants found on this iSolarCloud account."
+      />
+    </div>
+  );
+}
+```
+
+- [ ] **Step 3: Write the failing form test**
+
+Read `packages/plugins/energy/goodwe-sems/client/GoodweSemsForm.test.tsx` first
+and reuse its harness and tRPC mocking verbatim — it already mocks the plugin
+tRPC client, and inventing a second approach would diverge from the repo.
+
+Create `packages/plugins/energy/sungrow-isolarcloud/client/SungrowForm.test.tsx`
+covering exactly these cases:
+
+```
+- renders Email, Password and Server region fields
+- defaults the region select to "Europe"
+- disables the "Load plants" button while email or password is empty
+- enables "Load plants" once email and password are both non-empty
+- renders returned plants as selectable options after listPlants succeeds
+- shows the returned error text when listPlants resolves { success: false }
+- calls onTestSuccess(email, password, region, psId) after testConnection succeeds
+```
+
+- [ ] **Step 4: Run test to verify it fails**
+
+Run: `deno task --filter client test`
+Expected: FAIL — `./SungrowForm.tsx` not found.
+
+- [ ] **Step 5: Write the components and register them**
+
+Write `SungrowForm.tsx`, `SungrowConfig.tsx` and `SungrowSetupStep.tsx` by
+copying `GoodweSemsForm.tsx`, `GoodweSemsConfig.tsx` and
+`GoodweSemsSetupStep.tsx` and applying these changes:
+
+1. Rename throughout: `account` → `email`, `stationId` → `psId`,
+   `StationPicker`/`StationOption` → `PlantPicker`/`PlantOption`,
+   "Power Station" → "Plant", "SEMS Portal password" → "iSolarCloud password".
+2. Delete the SEMS+ `Switch`, its `USE_SEMS_PLUS_*` imports,
+   `initialUseSemsPlus`, `onUseSemsPlusChange`, and every `useSemsPlus`
+   argument threaded through the mutations.
+3. Add region state (`useState("europe")`) rendered as a Radix `Select` over
+   `SUNGROW_REGIONS`, labelled `REGION_LABEL` with `REGION_HELP` beneath it,
+   and pass `region` in both the `listPlants` and `testConnection` mutation
+   inputs.
+4. `SungrowForm`'s props become:
+
+```ts
+interface SungrowFormProps {
+  initialEmail: string;
+  initialRegion: string;
+  initialPsId: string;
+  onTestSuccess: (
+    email: string,
+    password: string,
+    region: string,
+    psId: string,
+  ) => void;
+}
+```
+
+Create `packages/plugins/energy/sungrow-isolarcloud/client/wizardSteps.ts`:
+
+```ts
+import type { PluginStepDef } from "../../../hostUi.ts";
+import type { EnergyPluginOption } from "../../../pluginOptions.ts";
+import { sungrowSetupStep } from "./SungrowSetupStep.tsx";
+
+export const sungrowWizardSteps: PluginStepDef[] = [sungrowSetupStep];
+
+export const sungrowOption: EnergyPluginOption = {
+  id: "sungrow_isolarcloud",
+  label: "Sungrow (Cloud / iSolarCloud)",
+  description:
+    "Connect via your iSolarCloud account login. Reads solar production from " +
+    "the Sungrow cloud. Grid and consumption readings need a compatible " +
+    "Sungrow meter; without one, use gross solar mode.",
+  iconKey: "cloud",
+};
+```
+
+Then make **three** edits to `packages/plugins/componentRegistry.ts`:
+
+a. Import beside the other energy client imports:
+
+```ts
+import {
+  sungrowOption,
+  sungrowWizardSteps,
+} from "./energy/sungrow-isolarcloud/client/wizardSteps.ts";
+import { SungrowConfig } from "./energy/sungrow-isolarcloud/client/SungrowConfig.tsx";
+```
+
+b. Add to `energyPluginOptions` (around line 74) — **without this the plugin
+never appears in the setup picker**:
+
+```ts
+  sungrowOption,
+```
+
+c. Add to `energyPluginSteps` and to the settings component map (around line
+141, beside `"goodwe-sems-config": GoodweSemsConfig`):
 
 ```ts
   sungrow_isolarcloud: sungrowWizardSteps,
 ```
 
-Also register the settings component in the same map that holds
-`"goodwe-sems-config": GoodweSemsConfig` (`packages/plugins/componentRegistry.ts:141`):
-
 ```ts
   "sungrow-isolarcloud-config": SungrowConfig,
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [ ] **Step 6: Run tests to verify they pass**
 
 Run: `deno task --filter client test`
 Expected: PASS.
@@ -1298,7 +1443,7 @@ Expected: PASS.
 Run: `deno check`
 Expected: no errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add packages/plugins/energy/sungrow-isolarcloud/client packages/plugins/componentRegistry.ts
