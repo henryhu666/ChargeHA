@@ -106,7 +106,3 @@ TDD. Envelope round-trip; client against a fake transport (login success,
 `login_state == "0"`, token expiry → single re-login); adapter mapping from the
 captured payload including the all-nulls case; plugin tests mirroring
 `FroniusCloudAdapter.test.ts` and `GoodweSemsPlugin.test.ts`.
-
-Not coverable by tests: that `pv_power_map_virgin` carries a sane non-zero value
-in daylight — the spike ran at night, where zero is correct. One manual daylight
-check gates calling this working.
