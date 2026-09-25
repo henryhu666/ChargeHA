@@ -46,6 +46,12 @@ export const demoEnergyPluginSummaries: DemoEnergyPluginSummary[] = [
     settingsComponentKey: "goodwe-sems-config",
   },
   {
+    id: "sungrow_isolarcloud",
+    displayName: "Sungrow (Cloud / iSolarCloud)",
+    vendor: "Sungrow",
+    settingsComponentKey: "sungrow-isolarcloud-config",
+  },
+  {
     id: "simulated_energy",
     displayName: "Simulated",
     vendor: "ChargeHA",
