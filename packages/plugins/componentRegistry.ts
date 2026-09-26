@@ -24,6 +24,7 @@ import { FroniusLocalConfig } from "./energy/fronius-local/client/FroniusLocalCo
 import { SigenergyLocalConfig } from "./energy/sigenergy-local/client/SigenergyLocalConfig.tsx";
 import { EnphaseLocalConfig } from "./energy/enphase-local/client/EnphaseLocalConfig.tsx";
 import { GoodweSemsConfig } from "./energy/goodwe-sems/client/GoodweSemsConfig.tsx";
+import { SungrowConfig } from "./energy/sungrow-isolarcloud/client/SungrowConfig.tsx";
 import { TapoSettings } from "./chargers/tapo/client/TapoSettings.tsx";
 import { OcppSettings } from "./chargers/ocpp/client/OcppSettings.tsx";
 import { SimulatedChargerSettings } from "./chargers/simulated/client/SimulatedChargerSettings.tsx";
@@ -49,6 +50,10 @@ import {
   goodweSemsOption,
   goodweSemsWizardSteps,
 } from "./energy/goodwe-sems/client/wizardSteps.ts";
+import {
+  sungrowOption,
+  sungrowWizardSteps,
+} from "./energy/sungrow-isolarcloud/client/wizardSteps.ts";
 import {
   simulatedEnergyOption,
   simulatedEnergyWizardSteps,
@@ -77,6 +82,7 @@ export const energyPluginOptions: EnergyPluginOption[] = [
   sigenergyLocalOption,
   enphaseLocalOption,
   goodweSemsOption,
+  sungrowOption,
   simulatedEnergyOption,
 ];
 
@@ -113,6 +119,7 @@ export const energyPluginSteps: Record<string, PluginStepDef[]> = {
   sigenergy_local: sigenergyLocalWizardSteps,
   enphase_local: enphaseLocalWizardSteps,
   goodwe_sems: goodweSemsWizardSteps,
+  sungrow_isolarcloud: sungrowWizardSteps,
   simulated_energy: simulatedEnergyWizardSteps,
 };
 
@@ -139,6 +146,7 @@ export const pluginSettingsComponents: Record<
   "sigenergy-local-config": SigenergyLocalConfig,
   "enphase-local-config": EnphaseLocalConfig,
   "goodwe-sems-config": GoodweSemsConfig,
+  "sungrow-isolarcloud-config": SungrowConfig,
   "simulated-energy-config": SimulatedEnergyConfig,
   "tapo-settings": TapoSettings,
   "ocpp-settings": OcppSettings,
