@@ -75,6 +75,21 @@ describe("SungrowClient", () => {
     expect(aesDecrypt(seenBody, KEY).user_account).toBe("a@b.c");
   });
 
+  it("sends user_id, token and lang on authenticated calls", async () => {
+    // The API rejects an authenticated body that carries only a token with
+    // "ws.missing-parameter:user_id or org_id or ps_id or nmi".
+    let authBody: Record<string, unknown> = {};
+    stub = stubFetch((url, body) => {
+      if (url.endsWith("/login")) return loginOk;
+      authBody = aesDecrypt(body, KEY);
+      return { result_code: "1", result_data: { pageList: [] } };
+    });
+    await makeClient().getPlants();
+    expect(authBody.user_id).toBe("42");
+    expect(authBody.token).toBe("TK");
+    expect(authBody.lang).toBe("_en_US");
+  });
+
   it("maps the plant list to psId/name pairs", async () => {
     stub = stubFetch((url) =>
       url.endsWith("/login") ? loginOk : {

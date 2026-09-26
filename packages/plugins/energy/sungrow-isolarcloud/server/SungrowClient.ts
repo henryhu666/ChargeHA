@@ -40,6 +40,8 @@ interface ClientLog {
   warn(message: string): void;
 }
 
+const LANG = "_en_US";
+
 export class SungrowClient {
   private token: string | null = null;
   private userId = "";
@@ -132,7 +134,13 @@ export class SungrowClient {
   ): Promise<Record<string, unknown>> {
     if (this.token === null) await this.login();
     const send = () =>
-      this.post(path, { ...this.common(), token: this.token, ...body });
+      this.post(path, {
+        ...this.common(),
+        user_id: this.userId,
+        token: this.token,
+        lang: LANG,
+        ...body,
+      });
 
     let data = await send();
     if (TOKEN_REJECTED.has(String(data.result_code))) {
